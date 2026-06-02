@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>CALL TRACE — 着信番号調査</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&family=Share+Tech+Mono&display=swap');
+  :root{
+    --bg:#0a0d12; --panel:#0f1520; --border:#1e3a5f;
+    --accent:#00d4ff; --accent2:#ff4466; --warn:#ffaa00; --ok:#00cc66;
+    --text:#c8d8e8; --muted:#4a6080;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh;overflow-x:hidden;}
+  .grid-bg{position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;}
+  .container{max-width:600px;margin:0 auto;padding:32px 18px 60px;position:relative;z-index:1;}
+  header{text-align:center;margin-bottom:32px;}
+  .logo-line{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;}
+  .logo-icon{width:34px;height:34px;border:2px solid var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 20px rgba(0,212,255,.3);animation:pulse 2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 10px rgba(0,212,255,.3)}50%{box-shadow:0 0 30px rgba(0,212,255,.6)}}
+  h1{font-family:'Share Tech Mono',monospace;font-size:20px;color:var(--accent);letter-spacing:4px;}
+  .subtitle{font-size:11px;color:var(--muted);letter-spacing:2px;font-family:'Share Tech Mono',monospace;}
+
+  /* manual input */
+  .input-panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;}
+  .input-row{display:flex;gap:10px;}
+  .phone-input{flex:1;background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-family:'Share Tech Mono',monospace;font-size:18px;color:#fff;letter-spacing:3px;outline:none;}
+  .phone-input:focus{border-color:var(--accent);}
+  .btn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:14px 22px;font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:bold;letter-spacing:2px;cursor:pointer;white-space:nowrap;}
+  .btn:disabled{opacity:.4;}
+
+  .loading{display:none;text-align:center;padding:48px 0;}
+  .loading.on{display:block;}
+  .ring{width:54px;height:54px;border:2px solid rgba(0,212,255,.12);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-text{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--accent);letter-spacing:3px;}
+
+  .result{display:none;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .result.on{display:block;animation:slide .3s ease;}
+  @keyframes slide{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  .r-head{display:flex;align-items:center;gap:14px;padding:18px 22px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.2);}
+  .r-phone{font-family:'Share Tech Mono',monospace;font-size:18px;color:#fff;letter-spacing:2px;flex:1;}
+  .badge{padding:4px 12px;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:bold;letter-spacing:1px;}
+  .b-high{background:rgba(255,68,102,.2);color:var(--accent2);border:1px solid var(--accent2);}
+  .b-med{background:rgba(255,170,0,.15);color:var(--warn);border:1px solid var(--warn);}
+  .b-low{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid var(--accent);}
+  .b-safe{background:rgba(0,200,100,.1);color:var(--ok);border:1px solid var(--ok);}
+  .r-body{padding:20px 22px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;}
+  .card{background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:14px;}
+  .card.full{grid-column:1/-1;}
+  .card-label{font-size:10px;color:var(--muted);letter-spacing:2px;font-family:'Share Tech Mono',monospace;margin-bottom:6px;display:block;}
+  .card-value{font-size:14px;}
+  .ai{background:rgba(0,212,255,.03);border:1px solid rgba(0,212,255,.15);border-radius:8px;padding:18px;}
+  .ai-label{font-size:10px;color:var(--accent);letter-spacing:3px;font-family:'Share Tech Mono',monospace;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+  .ai-dot{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:blink 1s ease-in-out infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+  .ai-text{font-size:14px;line-height:1.8;white-space:pre-wrap;}
+  .err{display:none;background:rgba(255,68,102,.08);border:1px solid var(--accent2);border-radius:8px;padding:16px;color:var(--accent2);font-size:13px;}
+  .err.on{display:block;}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="container">
+  <header>
+    <div class="logo-line"><div class="logo-icon">📡</div><h1>CALL TRACE</h1></div>
+    <div class="subtitle">AI PHONE NUMBER ANALYSIS</div>
+  </header>
+
+  <div class="input-panel">
+    <div class="input-row">
+      <input class="phone-input" id="phone" type="tel" placeholder="例: 03-1234-5678" maxlength="20">
+      <button class="btn" id="go" onclick="run()">TRACE ▶</button>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="ring"></div>
+    <div class="loading-text">ANALYZING...</div>
+  </div>
+
+  <div class="err" id="err"></div>
+
+  <div class="result" id="result">
+    <div class="r-head">
+      <div class="r-phone" id="rPhone"></div>
+      <div class="badge" id="badge"></div>
+    </div>
+    <div class="r-body">
+      <div class="grid" id="grid"></div>
+      <div class="ai">
+        <div class="ai-label"><span class="ai-dot"></span>AI 分析レポート</div>
+        <div class="ai-text" id="aiText"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function run(){
+    const v = document.getElementById('phone').value.trim();
+    if(!v){ showErr('電話番号を入力してください'); return; }
+    lookup(v);
+  }
+
+  async function lookup(phone){
+    document.getElementById('phone').value = phone;
+    document.getElementById('result').classList.remove('on');
+    document.getElementById('err').classList.remove('on');
+    document.getElementById('loading').classList.add('on');
+    document.getElementById('go').disabled = true;
+
+    try{
+      const r = await fetch('/api/lookup?phone=' + encodeURIComponent(phone));
+      const data = await r.json();
+      if(!r.ok || data.error){ throw new Error(data.error || ('HTTP '+r.status)); }
+      show(data);
+    }catch(e){
+      document.getElementById('loading').classList.remove('on');
+      showErr('分析に失敗しました: ' + e.message);
+    }
+    document.getElementById('go').disabled = false;
+  }
+
+  function show(d){
+    document.getElementById('loading').classList.remove('on');
+    document.getElementById('rPhone').textContent = d.phone || '';
+    const badge = document.getElementById('badge');
+    badge.textContent = d.risk_label || '不明';
+    badge.className = 'badge ' + ({high:'b-high',medium:'b-med',low:'b-low',safe:'b-safe'}[d.risk] || 'b-low');
+    document.getElementById('grid').innerHTML =
+      '<div class="card"><span class="card-label">TYPE</span><div class="card-value">'+(d.type||'不明')+'</div></div>'+
+      '<div class="card"><span class="card-label">REGION</span><div class="card-value">'+(d.region||'不明')+'</div></div>'+
+      '<div class="card full"><span class="card-label">PURPOSE</span><div class="card-value">'+(d.purpose||'不明')+'</div></div>';
+    document.getElementById('aiText').textContent = (d.analysis||'') + (d.advice ? '\n\n💡 '+d.advice : '');
+    document.getElementById('result').classList.add('on');
+  }
+
+  function showErr(m){
+    const e = document.getElementById('err');
+    e.textContent = m; e.classList.add('on');
+  }
+
+  // ?phone= があれば自動実行（ショートカット連携）
+  (function(){
+    const p = new URLSearchParams(location.search).get('phone');
+    if(p && p.trim()){ lookup(p.trim()); }
+  })();
+
+  document.getElementById('phone').addEventListener('keydown',e=>{ if(e.key==='Enter') run(); });
+</script>
+</body>
+</html>
