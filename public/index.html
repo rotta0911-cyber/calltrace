@@ -106,6 +106,9 @@
   }
 
   async function lookup(phone){
+    // スペース・改行・ハイフン等を除去し数字だけにする（先頭+は残す）
+    phone = String(phone).replace(/[^\d+]/g,'');
+    if(!phone){ document.getElementById('loading').classList.remove('on'); showErr('電話番号が読み取れませんでした'); return; }
     document.getElementById('phone').value = phone;
     document.getElementById('result').classList.remove('on');
     document.getElementById('err').classList.remove('on');
